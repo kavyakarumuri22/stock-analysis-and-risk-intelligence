@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RiskDesk – stock analysis and risk dashboard</title>
+<style>
+:root{--bg:#eef2f6;--panel:#fff;--ink:#14212f;--mute:#667585;--line:#dbe2ea;--side:#12263b;--sideink:#c5d3e2;--blue:#2457d6;--green:#1f8a5b;--red:#c43d3d;--amber:#d08a12}
+@media (prefers-color-scheme:dark){:root{--bg:#0d1620;--panel:#15212d;--ink:#e5edf5;--mute:#8da0b3;--line:#263648;--side:#0a121b;--blue:#6b94ff;--green:#4cc38a;--red:#f0716f;--amber:#eab04a}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif}
+.app{display:grid;grid-template-columns:210px 1fr;min-height:100vh}
+aside{background:var(--side);color:var(--sideink);padding:20px 12px;position:sticky;top:0;height:100vh}
+aside h1{font-size:18px;margin:0 8px 22px;color:#fff}
+aside h1 small{display:block;font-weight:400;font-size:12px;color:var(--sideink)}
+nav button{display:block;width:100%;text-align:left;background:none;border:0;color:inherit;font:inherit;padding:10px 12px;border-radius:6px;cursor:pointer;margin-bottom:4px}
+nav button.on{background:rgba(255,255,255,.12);color:#fff;font-weight:600}
+nav button:hover{background:rgba(255,255,255,.07)}
+main{padding:18px 22px 40px;min-width:0}
+.top{display:flex;flex-wrap:wrap;gap:12px;align-items:end;justify-content:space-between;margin-bottom:16px}
+.top h2{margin:0;font-size:22px}.top p{margin:0;color:var(--mute)}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:end}
+label{display:flex;flex-direction:column;font-size:12px;color:var(--mute);gap:3px}
+select,input{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:6px 9px}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px;min-width:0}
+.card h3{margin:0 0 10px;font-size:14px}
+.k{grid-column:span 1}.k b{display:block;font-size:24px;font-variant-numeric:tabular-nums}.k span{color:var(--mute);font-size:12px}
+.s2{grid-column:span 2}.s3{grid-column:span 3}.s4{grid-column:span 4}.s6{grid-column:span 6}
+canvas{width:100%;display:block}
+.pos{color:var(--green)}.neg{color:var(--red)}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+th{font-weight:500;color:var(--mute);font-size:12px}
+th,td{text-align:left;padding:7px 6px;border-bottom:1px solid var(--line)}
+tr.row{cursor:pointer}tr.row:hover,tr.sel{background:rgba(36,87,214,.08)}
+.badge{padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff}
+.alert{display:flex;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+.alert:last-child{border:0}.dot{flex:none;width:9px;height:9px;border-radius:50%;margin-top:6px}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin:4px 0 12px}.bar i{display:block;height:100%}
+.heat{display:grid;gap:3px}.heat div{padding:8px 4px;text-align:center;font-size:12px;border-radius:4px;font-variant-numeric:tabular-nums}
+.sum{display:flex;flex-wrap:wrap;gap:20px;margin-bottom:12px}.sum b{display:block;font-size:20px}.sum span{font-size:12px;color:var(--mute)}
+td input{width:64px}
+.rc{height:10px;background:var(--blue);border-radius:3px}
+.note{color:var(--mute);font-size:12px;margin-top:18px}
+.view{display:none}.view.on{display:block}
+@media(max-width:900px){.app{grid-template-columns:1fr}aside{position:static;height:auto;display:flex;align-items:center;gap:10px;overflow-x:auto;padding:10px}aside h1{margin:0 10px 0 0;white-space:nowrap}aside h1 small{display:none}nav{display:flex;gap:4px}nav button{white-space:nowrap;margin:0}.grid{grid-template-columns:repeat(2,1fr)}.s2,.s3,.s4,.s6{grid-column:span 2}}
+</style>
+</head>
+<body>
+<div class="app">
+<aside>
+  <h1>RiskDesk<small>Stock and risk dashboard</small></h1>
+  <nav id="nav">
+    <button data-v="overview" class="on">Overview</button>
+    <button data-v="risk">Risk analysis</button>
+    <button data-v="portfolio">Portfolio</button>
+  </nav>
+  <div id="src" style="margin:24px 10px 0;font-size:12px;color:var(--sideink)">Loading data…</div>
+</aside>
+<main>
+  <div class="top">
+    <div><h2 id="title"></h2><p id="sub"></p></div>
+    <div class="ctl">
+      <label>Stock<select id="sym"></select></label>
+      <label>Period<select id="range"><option value="60">3 months</option><option value="120">6 months</option><option value="250" selected>1 year</option></select></label>
+      <label>Risk-free rate (%)<input id="rf" type="number" value="5" step="0.5" min="0" max="20" style="width:80px"></label>
+      <label>Upload CSV (date,close)<input id="csv" type="file" accept=".csv"></label>
+    </div>
+  </div>
+
+  <section class="view on" id="v-overview">
+    <div class="grid">
+      <div class="card k"><span>Last price</span><b id="k1"></b><span id="k1s"></span></div>
+      <div class="card k"><span>Return over period</span><b id="k2"></b></div>
+      <div class="card k"><span>Volatility (annual)</span><b id="k3"></b></div>
+      <div class="card k"><span>1 day loss, 95% confidence</span><b id="k4"></b></div>
+      <div class="card k"><span>Sharpe ratio</span><b id="k5"></b></div>
+      <div class="card k"><span>Beta vs market</span><b id="k6"></b></div>
+      <div class="card s4"><h3>Price with 20 and 50 day averages</h3><canvas id="c1" height="250"></canvas></div>
+      <div class="card s2"><h3>Risk score</h3><canvas id="gauge" height="150"></canvas><div id="gtxt" style="text-align:center;font-weight:600"></div></div>
+      <div class="card s4"><h3>Watchlist (click a row to analyse)</h3>
+        <table><thead><tr><th>Stock</th><th>Price</th><th>Today</th><th>Return</th><th>Volatility</th><th>Risk</th><th>Trend</th></tr></thead><tbody id="wl"></tbody></table></div>
+      <div class="card s2"><h3>Alerts</h3><div id="alerts"></div></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-risk">
+    <div class="grid">
+      <div class="card s2"><h3>What makes up the score</h3><div id="parts"></div><ul id="ins" style="padding-left:18px;margin:8px 0 0"></ul></div>
+      <div class="card s4"><h3>Daily returns and the 1 in 20 loss line</h3><canvas id="hist" height="230"></canvas></div>
+      <div class="card s3"><h3>Drop from previous peak</h3><canvas id="c3" height="190"></canvas></div>
+      <div class="card s3"><h3>Momentum (RSI, 14 days)</h3><canvas id="c2" height="190"></canvas></div>
+      <div class="card s6"><h3>How the stocks move together (correlation)</h3><div class="heat" id="heat"></div>
+        <p class="note">Values near 1 mean two stocks rise and fall together, so holding both adds little protection. Values near 0 or below diversify better.</p></div>
+    </div>
+  </section>
+
+  <section class="view" id="v-portfolio">
+    <div class="card s6" style="margin-bottom:14px"><div class="sum" id="pfsum"></div></div>
+    <div class="grid">
+      <div class="card s2"><h3>Holdings</h3>
+        <table><thead><tr><th>Stock</th><th>Weight (%)</th></tr></thead><tbody id="pfw"></tbody></table></div>
+      <div class="card s2"><h3>Allocation</h3><canvas id="donut" height="220"></canvas></div>
+      <div class="card s2"><h3>Share of portfolio risk</h3><div id="pfrc"></div>
+        <p class="note">A small holding can still carry a large share of risk if it is volatile.</p></div>
+    </div>
+  </section>
+
+  <p class="note">Prices come from the Node backend (Yahoo Finance, unofficial endpoint). If the backend is not running, the page shows simulated prices instead. Learning tool, not investment advice.</p>
+</main>
+</div>
+
+<script>
+// ---------- Sample data ----------
+function rng(s){return function(){s|=0;s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function gauss(r){return Math.sqrt(-2*Math.log(r()+1e-12))*Math.cos(2*Math.PI*r())}
+const N=250,TK=[
+ {s:'RELIANCE',n:'Reliance Industries',sec:'Energy and retail',p:1400,mu:.10,b:1.0,i:.011,sd:11},
+ {s:'TCS',n:'Tata Consultancy Services',sec:'IT services',p:3200,mu:.08,b:.75,i:.010,sd:22},
+ {s:'INFY',n:'Infosys',sec:'IT services',p:1500,mu:.09,b:.9,i:.012,sd:33},
+ {s:'HDFCBANK',n:'HDFC Bank',sec:'Banking',p:950,mu:.11,b:1.1,i:.010,sd:44},
+ {s:'ITC',n:'ITC Limited',sec:'FMCG',p:420,mu:.07,b:.55,i:.008,sd:55},
+ {s:'TATAMOTORS',n:'Tata Motors',sec:'Automobiles',p:700,mu:.12,b:1.5,i:.018,sd:66},
+ {s:'AAPL',n:'Apple Inc.',sec:'Technology',p:200,mu:.14,b:1.15,i:.011,sd:77},
+ {s:'TSLA',n:'Tesla Inc.',sec:'Automobiles',p:250,mu:.16,b:1.9,i:.028,sd:88}];
+let dates=[];{const d=new Date();d.setDate(d.getDate()-N*1.45);while(dates.length<N){d.setDate(d.getDate()+1);if(d.getDay()%6)dates.push(new Date(d))}}
+const mr=rng(7),mk=[];for(let i=0;i<N;i++)mk.push(.10/252+.01*gauss(mr));
+const DATA={};
+TK.forEach(t=>{const r=rng(t.sd);let p=t.p;const c=[];for(let i=0;i<N;i++){p*=Math.exp(t.mu/252+t.b*mk[i]+t.i*gauss(r));c.push(p)}DATA[t.s]={name:t.n,sec:t.sec,close:c}});
+let MARKET=(()=>{let p=100;return mk.map(x=>p*=Math.exp(x))})();
+function loadSeries(sym){return DATA[sym]}
+
+// ---------- Maths ----------
+const rets=a=>a.slice(1).map((x,i)=>x/a[i]-1);
+const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
+const sd=a=>{const m=mean(a);return Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/(a.length-1))};
+const cov=(a,b)=>{const n=Math.min(a.length,b.length),x=a.slice(-n),y=b.slice(-n),mx=mean(x),my=mean(y);let s=0;for(let i=0;i<n;i++)s+=(x[i]-mx)*(y[i]-my);return s/(n-1)};
+const corr=(a,b)=>cov(a,b)/Math.sqrt(cov(a,a)*cov(b,b));
+const pct=(a,q)=>[...a].sort((x,y)=>x-y)[Math.max(0,Math.floor(q*a.length))];
+const sma=(a,n)=>a.map((_,i)=>i<n-1?null:mean(a.slice(i-n+1,i+1)));
+function rsi(a,n=14){const o=Array(a.length).fill(null);let g=0,l=0;for(let i=1;i<a.length;i++){const d=a[i]-a[i-1];if(i<=n){g+=Math.max(d,0);l+=Math.max(-d,0);if(i===n){g/=n;l/=n;o[i]=100-100/(1+g/(l||1e-9))}}else{g=(g*(n-1)+Math.max(d,0))/n;l=(l*(n-1)+Math.max(-d,0))/n;o[i]=100-100/(1+g/(l||1e-9))}}return o}
+function dd(a){let p=a[0];return a.map(x=>{p=Math.max(p,x);return x/p-1})}
+function analyse(c,m,rf){
+ const r=rets(c),mr_=rets(m),vol=sd(r)*Math.sqrt(252),ann=mean(r)*252,d=dd(c),mdd=Math.min(...d),beta=cov(r,mr_)/cov(mr_,mr_),v95=-pct(r,.05);
+ const p={vol:Math.min(vol/.6,1),mdd:Math.min(-mdd/.4,1),var:Math.min(v95/.05,1),beta:Math.min(Math.abs(beta)/2,1)};
+ return{r,vol,ann,d,mdd,beta,v95,sharpe:(ann-rf)/vol,rsi:rsi(c),ret:c[c.length-1]/c[0]-1,day:c[c.length-1]/c[c.length-2]-1,p,score:Math.round(p.vol*35+p.mdd*30+p.var*20+p.beta*15)};
+}
+const lvl=s=>s<35?['Low','--green']:s<65?['Moderate','--amber']:['High','--red'];
+
+// ---------- Drawing ----------
+const $=id=>document.getElementById(id),css=v=>getComputedStyle(document.documentElement).getPropertyValue(v.trim()).trim();
+const fp=(x,d=1)=>(x*100).toFixed(d)+'%';
+function setup(cv){const dpr=window.devicePixelRatio||1,w=cv.clientWidth,h=+cv.getAttribute('height');cv.width=w*dpr;cv.height=h*dpr;const g=cv.getContext('2d');g.scale(dpr,dpr);g.clearRect(0,0,w,h);return[g,w,h]}
+function plot(id,series,o){
+ const[g,w,h]=setup($(id));const v=series.flatMap(s=>s.d.filter(x=>x!=null));
+ let lo=o.min??Math.min(...v),hi=o.max??Math.max(...v);const L=44,R=8,T=6,B=20,n=series[0].d.length,X=i=>L+i*(w-L-R)/(n-1),Y=x=>T+(hi-x)*(h-T-B)/(hi-lo);
+ g.font='11px system-ui';g.fillStyle=css('--mute');g.strokeStyle=css('--line');
+ for(let k=0;k<=4;k++){const x=lo+(hi-lo)*k/4,y=Y(x);g.beginPath();g.moveTo(L,y);g.lineTo(w-R,y);g.stroke();g.fillText(o.f?o.f(x):x.toFixed(0),2,y+4)}
+ [0,n>>1,n-1].forEach((i,k)=>{g.textAlign=['left','center','right'][k];g.fillText(o.dt[i].toLocaleDateString('en-GB',{day:'numeric',month:'short'}),k==0?L:X(i),h-5)});g.textAlign='left';
+ (o.lines||[]).forEach(l=>{g.setLineDash([4,4]);g.strokeStyle=css(l.c);g.beginPath();g.moveTo(L,Y(l.y));g.lineTo(w-R,Y(l.y));g.stroke();g.setLineDash([])});
+ series.forEach(s=>{g.strokeStyle=css(s.c);g.lineWidth=s.w||1.5;g.beginPath();let st=0;s.d.forEach((x,i)=>{if(x==null)return;st?g.lineTo(X(i),Y(x)):g.moveTo(X(i),Y(x));st=1});g.stroke();
+  if(s.fill){g.lineTo(X(n-1),Y(0));g.lineTo(X(0),Y(0));g.globalAlpha=.18;g.fillStyle=css(s.c);g.fill();g.globalAlpha=1}});
+}
+function spark(cv,d,up){const[g,w,h]=setup(cv),lo=Math.min(...d),hi=Math.max(...d);g.strokeStyle=css(up?'--green':'--red');g.lineWidth=1.4;g.beginPath();d.forEach((x,i)=>{const px=i*(w-2)/(d.length-1)+1,py=h-2-(x-lo)/(hi-lo||1)*(h-4);i?g.lineTo(px,py):g.moveTo(px,py)});g.stroke()}
+function gauge(score){
+ const[g,w,h]=setup($('gauge')),cx=w/2,cy=h-12,r=Math.min(w/2-12,h-24);g.lineWidth=14;
+ [['--green',0,.35],['--amber',.35,.65],['--red',.65,1]].forEach(([c,a,b])=>{g.strokeStyle=css(c);g.beginPath();g.arc(cx,cy,r,Math.PI*(1+a),Math.PI*(1+b));g.stroke()});
+ const an=Math.PI*(1+score/100);g.strokeStyle=css('--ink');g.lineWidth=3;g.beginPath();g.moveTo(cx,cy);g.lineTo(cx+Math.cos(an)*(r-12),cy+Math.sin(an)*(r-12));g.stroke();
+ g.fillStyle=css('--ink');g.beginPath();g.arc(cx,cy,6,0,7);g.fill();g.font='600 26px system-ui';g.textAlign='center';g.fillText(score,cx,cy-r/3);
+}
+
+// ---------- State and views ----------
+const S={v:'overview'};
+const titles={overview:['Market overview','Trend, risk and alerts for your watchlist'],risk:['Risk analysis','Where the risk comes from and how stocks move together'],portfolio:['Portfolio','Combine holdings and see who carries the risk']};
+const W={};Object.keys(DATA).forEach(k=>W[k]=+(100/Object.keys(DATA).length).toFixed(1));
+function ctx(){const days=+$('range').value,rf=+$('rf').value/100,sym=$('sym').value,m=MARKET.slice(-days);return{days,rf,sym,m,close:loadSeries(sym).close.slice(-days),dt:dates.slice(-days)}}
+function render(){
+ [$('title').textContent,$('sub').textContent]=titles[S.v];
+ document.querySelectorAll('.view').forEach(e=>e.classList.toggle('on',e.id==='v-'+S.v));
+ document.querySelectorAll('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.v===S.v));
+ const c=ctx(),a=analyse(c.close,c.m,c.rf);
+ if(S.v==='overview')overview(c,a);if(S.v==='risk')risk(c,a);if(S.v==='portfolio')portfolio(c);
+}
+function overview(c,a){
+ const last=c.close[c.close.length-1];
+ $('k1').textContent=last.toFixed(2);$('k1s').innerHTML=`<span class="${a.day>=0?'pos':'neg'}">${a.day>=0?'+':''}${fp(a.day,2)} today</span>`;
+ $('k2').innerHTML=`<span class="${a.ret>=0?'pos':'neg'}">${fp(a.ret)}</span>`;$('k3').textContent=fp(a.vol);$('k4').textContent=fp(a.v95,2);$('k5').textContent=a.sharpe.toFixed(2);$('k6').textContent=a.beta.toFixed(2);
+ plot('c1',[{d:c.close,c:'--ink',w:1.8},{d:sma(c.close,20),c:'--blue'},{d:sma(c.close,50),c:'--amber'}],{dt:c.dt});
+ gauge(a.score);const L=lvl(a.score);$('gtxt').innerHTML=`<span style="color:${css(L[1])}">${L[0]} risk</span>`;
+ const rows=[],al=[];
+ Object.keys(DATA).forEach(k=>{const cl=DATA[k].close.slice(-c.days),x=analyse(cl,c.m,c.rf),lv=lvl(x.score),r=x.rsi[x.rsi.length-1],m50=sma(cl,50).pop();
+  rows.push(`<tr class="row ${k===c.sym?'sel':''}" data-s="${k}"><td><b>${k}</b><br><span style="color:var(--mute);font-size:12px">${DATA[k].name}</span></td><td>${cl[cl.length-1].toFixed(2)}</td><td class="${x.day>=0?'pos':'neg'}">${fp(x.day,2)}</td><td class="${x.ret>=0?'pos':'neg'}">${fp(x.ret)}</td><td>${fp(x.vol,0)}</td><td><span class="badge" style="background:${css(lv[1])}">${x.score}</span></td><td><canvas height="26" style="width:80px" data-k="${k}"></canvas></td></tr>`);
+  if(x.score>=65)al.push([k+' is in the high risk band ('+x.score+'/100).','--red']);
+  if(x.mdd<-.25)al.push([k+' fell '+fp(-x.mdd,0)+' from its peak.','--red']);
+  if(r>70)al.push([k+' looks overbought (RSI '+r.toFixed(0)+').','--amber']);
+  if(r<30)al.push([k+' looks oversold (RSI '+r.toFixed(0)+').','--amber']);
+  if(m50&&cl[cl.length-1]<m50)al.push([k+' is below its 50 day average.','--amber']);
+ });
+ $('wl').innerHTML=rows.join('');
+ document.querySelectorAll('#wl canvas').forEach(cv=>{const cl=DATA[cv.dataset.k].close.slice(-c.days);spark(cv,cl,cl[cl.length-1]>=cl[0])});
+ document.querySelectorAll('#wl .row').forEach(r=>r.onclick=()=>{$('sym').value=r.dataset.s;render()});
+ $('alerts').innerHTML=(al.length?al:[['No alerts right now.','--green']]).slice(0,7).map(x=>`<div class="alert"><span class="dot" style="background:${css(x[1])}"></span><span>${x[0]}</span></div>`).join('');
+}
+function risk(c,a){
+ const P=[['Volatility',a.p.vol,35],['Max drop from peak',a.p.mdd,30],['1 day loss (VaR)',a.p.var,20],['Market sensitivity (beta)',a.p.beta,15]];
+ $('parts').innerHTML=P.map(p=>`<div style="display:flex;justify-content:space-between"><span>${p[0]}</span><b>${Math.round(p[1]*p[2])} of ${p[2]}</b></div><div class="bar"><i style="width:${p[1]*100}%;background:${css(p[1]>.66?'--red':p[1]>.33?'--amber':'--green')}"></i></div>`).join('');
+ const rv=a.rsi[a.rsi.length-1],last=c.close[c.close.length-1],m50=sma(c.close,50).pop();
+ $('ins').innerHTML=[
+  a.vol>.4?`Prices swing a lot (${fp(a.vol,0)} a year).`:a.vol<.2?`Prices are fairly steady (${fp(a.vol,0)} a year).`:`Volatility of ${fp(a.vol,0)} is mid-range for equities.`,
+  `On a bad day (1 in 20), expect a fall of ${fp(a.v95)} or more.`,
+  a.beta>1.2?`Beta ${a.beta.toFixed(2)}: moves more than the market.`:a.beta<.8?`Beta ${a.beta.toFixed(2)}: moves less than the market.`:`Beta ${a.beta.toFixed(2)}: moves with the market.`,
+  rv>70?`RSI ${rv.toFixed(0)}: gains were fast, a pullback is more likely.`:rv<30?`RSI ${rv.toFixed(0)}: heavy recent losses, may be oversold.`:m50&&last>m50?'Price is above its 50 day average (uptrend).':'Price is below its 50 day average (downtrend).'
+ ].map(t=>`<li>${t}</li>`).join('');
+ // histogram
+ const[g,w,h]=setup($('hist')),B=21,mn=Math.min(...a.r),mx=Math.max(...a.r),bw=(mx-mn)/B,bins=Array(B).fill(0);a.r.forEach(x=>bins[Math.min(B-1,Math.floor((x-mn)/bw))]++);
+ const top=Math.max(...bins),L=10,bwp=(w-L*2)/B;
+ bins.forEach((n,i)=>{const lo=mn+i*bw;g.fillStyle=css(lo+bw<=-a.v95?'--red':'--blue');g.fillRect(L+i*bwp+1,h-22-n/top*(h-40),bwp-2,n/top*(h-40))});
+ const vx=L+(-a.v95-mn)/(mx-mn)*(w-L*2);g.strokeStyle=css('--ink');g.setLineDash([4,4]);g.beginPath();g.moveTo(vx,6);g.lineTo(vx,h-22);g.stroke();g.setLineDash([]);
+ g.fillStyle=css('--mute');g.font='11px system-ui';g.fillText('1 in 20 loss: '+fp(-a.v95,2),Math.min(vx+6,w-120),16);g.fillText(fp(mn,1),L,h-6);g.textAlign='right';g.fillText(fp(mx,1),w-L,h-6);g.textAlign='left';
+ plot('c3',[{d:a.d.map(x=>x*100),c:'--red',fill:1}],{dt:c.dt,max:0,f:x=>x.toFixed(0)+'%'});
+ plot('c2',[{d:a.rsi,c:'--blue'}],{dt:c.dt,min:0,max:100,lines:[{y:70,c:'--red'},{y:30,c:'--green'}]});
+ const K=Object.keys(DATA),R={};K.forEach(k=>R[k]=rets(DATA[k].close.slice(-c.days)));
+ const hm=$('heat');hm.style.gridTemplateColumns=`80px repeat(${K.length},1fr)`;
+ hm.innerHTML='<div></div>'+K.map(k=>`<div><b>${k}</b></div>`).join('')+K.map(r=>`<div style="text-align:left"><b>${r}</b></div>`+K.map(q=>{const v=corr(R[r],R[q]);return`<div style="background:${v>=0?'rgba(36,87,214,':'rgba(208,138,18,'}${Math.min(Math.abs(v),1)*.75+.05})">${v.toFixed(2)}</div>`}).join('')).join('');
+}
